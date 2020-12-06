@@ -1,0 +1,9 @@
+deta==0.7
+fastapi[full]==0.62.0
+h11==0.11.0
+pydantic==1.7.3
+starlette==0.13.6
+ujson==4.0.1
+python-jwt==3.3.0
+odetam==1.0.1
+
