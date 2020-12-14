@@ -1,7 +1,5 @@
 import os
-import urllib.error
 
-from deta import Deta
 from fastapi import HTTPException, Security, Depends
 from fastapi.openapi.models import OAuthFlows
 from fastapi.security import OAuth2
@@ -10,7 +8,8 @@ from starlette.requests import Request
 
 from auth import models
 
-ALLOWED_DOMAINS = os.getenv("ALLOWED_DOMAINS").lower().split(",")
+USE_WHITELIST = bool(os.getenv("USE_WHITELIST"))
+WHITELIST_DOMAINS = os.getenv("WHITELIST_DOMAINS").lower().split(",")
 WHITELIST = os.getenv("WHITELIST").lower().split(",")
 JAM = JustAuthenticateMe(os.getenv("JAM_APP_ID"))
 
@@ -21,8 +20,8 @@ class JAMAuthentication(OAuth2):
         *args,
         tokenUrl: str,
         authorizationUrl: str,
-        token_name: str = "token",
-        refresh_token_name: str = "refresh_token",
+        token_name: str = None,
+        refresh_token_name: str = None,
         **kwargs
     ):
         flows = OAuthFlows(
@@ -32,8 +31,8 @@ class JAMAuthentication(OAuth2):
             }
         )
         super().__init__(flows=flows, *args, **kwargs)
-        self.token_name = token_name
-        self.refresh_token_name = refresh_token_name
+        self.token_name = token_name or "token"
+        self.refresh_token_name = refresh_token_name or "refresh_token"
 
     async def __call__(self, request: Request) -> str:
         """Extract token from cookies"""
@@ -44,14 +43,19 @@ class JAMAuthentication(OAuth2):
 
 
 def validate_email(email) -> bool:
+    if not USE_WHITELIST:
+        return True
     domain = email.split("@")[-1]
-    if domain.lower() in ALLOWED_DOMAINS or email in WHITELIST:
+    if domain.lower() in WHITELIST_DOMAINS or email in WHITELIST:
         return True
     return False
 
 
 oauth2_scheme = JAMAuthentication(
-    tokenUrl="/auth/confirm", authorizationUrl="/auth/request"
+    tokenUrl="/auth/confirm",
+    authorizationUrl="/auth/request",
+    token_name="id_token",
+    refresh_token_name="refresh_token",
 )
 
 
@@ -66,10 +70,6 @@ async def get_current_user(token: str = Security(oauth2_scheme)) -> models.User:
     email = claims.get("email")
     if not email:
         raise credential_exception
-    # deta = Deta(os.getenv('PROJECT_KEY'))
-    # users = deta.Base('user')
-    # user = next(users.fetch({"email": email}))
-    # user = user[0]
     user = await models.get_user_by_email(email)
     if not user:
         user = await models.create_user_from_email(email)
