@@ -34,14 +34,10 @@ async def request_login(login_request: LoginRequest):
     return "success"
 
 
+# noinspection PyPep8Naming
 @auth_router.get("/confirm")
-async def confirm(refreshToken: Optional[str]):
+async def confirm(refreshToken: Optional[str], response: Response):
     """Complete JustAuthenticateMe passwordless authentication."""
-    new_id_token = await JAM.refresh(refreshToken)
-    response = UJSONResponse({"status": "authenticated"})
-    response.set_cookie(
-        oauth2_scheme.token_name, new_id_token, httponly=True, secure=True
-    )
     response.set_cookie(
         oauth2_scheme.refresh_token_name,
         refreshToken,
@@ -49,7 +45,7 @@ async def confirm(refreshToken: Optional[str]):
         secure=True,
         expires=604800,
     )
-    return {"status": "authenticated"}
+    return "authenticated"
 
 
 @auth_router.get("/refresh")
