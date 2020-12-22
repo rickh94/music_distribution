@@ -1,7 +1,6 @@
-import datetime
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Response, Depends, Body
+from fastapi import APIRouter, HTTPException, Response, Depends
 from python_jam import (
     JAMBadRequest,
     JustAuthenticateMeError,
@@ -9,7 +8,6 @@ from python_jam import (
     JAMNotFound,
 )
 from starlette.requests import Request
-from starlette.responses import UJSONResponse
 
 from auth import models, security
 from auth.models import LoginRequest, UserUpdate
@@ -60,10 +58,12 @@ async def refresh(request: Request, response: Response):
         raise HTTPException(status_code=400, detail=str(e))
     except JAMUnauthorized:
         raise HTTPException(status_code=401, detail="Please log in")
+    except JAMNotFound as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except JustAuthenticateMeError:
         raise HTTPException(status_code=500, detail="Internal Server Error")
     response.set_cookie(oauth2_scheme.token_name, id_token, httponly=True, secure=True)
-    return {"status": "authenticated"}
+    return "authenticated"
 
 
 @auth_router.get("/me", response_model=models.User)
@@ -77,6 +77,7 @@ async def read_users_me(
 @auth_router.post("/me/update", response_model=models.UserUpdateResponse)
 async def put_users_me(
     update: UserUpdate,
+    request: Request,
     response: Response,
     current_user: models.User = Depends(security.get_current_active_user),
 ):
@@ -86,29 +87,36 @@ async def put_users_me(
         current_user.name = update.name
     if update.email:
         message = "please log in again"
+        id_token = request.cookies.get(oauth2_scheme.token_name)
+        refresh_token = request.cookies.get(oauth2_scheme.token_name)
+        await handle_logout(id_token, refresh_token)
         response.delete_cookie(oauth2_scheme.token_name)
-        response.delete_cookie(oauth2_scheme.refresh_token_name)
         current_user.email = update.email
     current_user.save()
     return models.UserUpdateResponse(message=message, user=current_user)
 
 
-@auth_router.get("/logout")
-async def logout(
-    request: Request, response: Response,
-):
-    """Logout user"""
-    id_token = request.cookies.get(oauth2_scheme.token_name)
-    refresh_token = request.cookies.get(oauth2_scheme.refresh_token_name)
+async def handle_logout(id_token, refresh_token):
     try:
         await JAM.delete_refresh_token(id_token, refresh_token)
     except JAMUnauthorized:
         pass
-    except JustAuthenticateMeError:
-        raise HTTPException(status_code=500, detail="Internal server error")
-    response.delete_cookie(oauth2_scheme.refresh_token_name)
+    except JAMNotFound:
+        pass
+    except JustAuthenticateMeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@auth_router.get("/logout")
+async def logout(request: Request, response: Response):
+    """Logout user"""
+    id_token = request.cookies.get(oauth2_scheme.token_name)
+    refresh_token = request.cookies.get(oauth2_scheme.refresh_token_name)
     response.delete_cookie(oauth2_scheme.token_name)
-    return {"status": "logged_out"}
+    if not refresh_token:
+        return "logged_out"
+    await handle_logout(id_token, refresh_token)
+    return "logged_out"
 
 
 @auth_router.get("/logout-everywhere")
@@ -123,6 +131,5 @@ async def logout_everywhere(
         pass
     except JustAuthenticateMeError:
         raise HTTPException(status_code=500, detail="Internal server error")
-    response.delete_cookie(oauth2_scheme.token_name)
     response.delete_cookie(oauth2_scheme.refresh_token_name)
     return {"status": "logged_out"}
