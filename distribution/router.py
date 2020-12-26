@@ -1,4 +1,5 @@
 from typing import List, Optional
+import urllib.error
 
 import odetam.exceptions
 from fastapi import APIRouter, HTTPException, Depends
@@ -18,7 +19,10 @@ async def create_distribution(distribution: models.MusicDistribution):
 
 @distribution_router.get("/")
 def get_all_distributions(_current_user: User = Depends(get_current_active_user)):
-    return models.MusicDistribution.get_all()
+    try:
+        return models.MusicDistribution.get_all()
+    except urllib.error.HTTPError:
+        raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
 @distribution_router.post("/search", response_model=List[models.MusicDistribution])

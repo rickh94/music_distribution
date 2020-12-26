@@ -9,8 +9,8 @@ from starlette.requests import Request
 from auth import models
 
 USE_WHITELIST = bool(os.getenv("USE_WHITELIST"))
-WHITELIST_DOMAINS = os.getenv("WHITELIST_DOMAINS").lower().split(",")
-WHITELIST = os.getenv("WHITELIST").lower().split(",")
+WHITELIST_DOMAINS = os.getenv("WHITELIST_DOMAINS", "").lower().split(",")
+WHITELIST = os.getenv("WHITELIST", "").lower().split(",")
 JAM = JustAuthenticateMe(os.getenv("JAM_APP_ID"))
 
 
